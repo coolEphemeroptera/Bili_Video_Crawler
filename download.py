@@ -1,4 +1,5 @@
 from threading import Thread
+import threading
 from queue import Queue
 import time 
 import random
@@ -48,6 +49,8 @@ class Worker(Thread):
         super().__init__()
         self.wid = wid
         self.daemon = True
+        self._stop_event = threading.Event()
+
         self.tasks = tasks
         self.video_dir = video_dir
         self.video_progress=video_progress
@@ -63,7 +66,7 @@ class Worker(Thread):
 
     def run(self):
         self.log("Launch")
-        while True:
+        while not self._stop_event.is_set():
             if not self.tasks.empty():
                 task, i, N = self.tasks.get()
                 utt = task.split('/')[-2]
@@ -76,6 +79,8 @@ class Worker(Thread):
                     command = [YOUGET, "-o", self.video_dir, "-O", utt, task]
                     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     self.progress(self.video_progress,utt)
+                except KeyboardInterrupt as e:
+                    raise e
                 except subprocess.CalledProcessError as e:
                     self.log("Fail to download, skip ..")
                     continue
@@ -87,6 +92,8 @@ class Worker(Thread):
                     subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     self.progress(self.audio_progress,utt)
                     if os.path.exists(video_file):os.remove(video_file) # 删除视频文件
+                except KeyboardInterrupt as e:
+                    raise e
                 except subprocess.CalledProcessError as e:
                     self.log("Fail to convert, skip ..")
                     continue
@@ -101,13 +108,13 @@ class Worker(Thread):
 if __name__ == "__main__":
 
     # 任务参数
-    task_list_file = "test_url.txt"
+    task_list_file = "videos_url.txt"
     nj =  3
     tasks = Queue()
 
     prefix = "dataset/小学公开课"
     video_dir = mkdir(f"{prefix}/videos", reset=True)
-    audio_dir = mkdir("{prefix}/audios", reset=True)
+    audio_dir = mkdir(f"{prefix}/audios", reset=True)
     video_progress = f"{prefix}/video.progress"
     audio_progress = f"{prefix}/audio.progress"
     with open(audio_progress,'w') as f:
